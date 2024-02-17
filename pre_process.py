@@ -1,15 +1,34 @@
 
-
-import pandas as pd 
-
-
-csv_file_path = '/users/edatkinson/LLL/CSVfiles'
-dict_file_path = 'users/edatkinson/LLL/CSVfiles/class_filenames.json'
-df = pd.read_csv(csv_file_path + '/train_with_null_classes.csv')
-
+import pandas as pd
+import glob
+import json
+import os
+import shutil
 '''
 Create a list of filenames which share the same class label for each class
 '''
+
+
+csv_file_path = '/users/edatkinson/LLL/CSVfiles'
+dict_file_path = '/users/edatkinson/AI-Project/class_filenames.json'
+# df = pd.read_csv(csv_file_path + '/val_with_null_classes.csv')
+
+
+
+# Path to directory where all CSV files are stored
+path = '/Users/edatkinson/LLL/CSVfiles'
+all_files = glob.glob(path + "/*.csv")
+
+li = []
+
+for filename in all_files:
+    df = pd.read_csv(filename, index_col=None, header=0)
+    li.append(df)
+
+frame = pd.concat(li, axis=0, ignore_index=True)
+frame.to_csv('combined_csv.csv', index=False)
+
+df = pd.read_csv('combined_csv.csv')
 
 # Create a list of class names including null
 class_names = df.columns[1:]
@@ -31,17 +50,51 @@ for index, row in df.iterrows():
 
 
 #Save the dictionary to a file
-import json
 
-with open(csv_file_path + '/class_filenames.json', 'w') as file:
+with open(dict_file_path, 'w') as file:
     json.dump(class_filenames, file, indent=4)
 
-#Load the dictionary from a file
-with open(csv_file_path + '/class_filenames.json', 'r') as file:
-    loaded_class_filenames = json.load(file)
 
-# Print the first 5 filenames for each class
-for class_name, filenames in loaded_class_filenames.items():
-    print(f"Class: {class_name}")
 
-    print(filenames[:5])
+
+### Move images into seperate folders depending on class label
+
+# Path to the JSON file and the directory containing all images
+json_file_path = '/users/edatkinson/AI-Project/class_filenames.json'
+
+train_images_directory = '/users/edatkinson/LLL/lll.v1i.multiclass/train'
+test_images_directory = '/users/edatkinson/LLL/lll.v1i.multiclass/test'
+valid_images_directory = '/users/edatkinson/LLL/lll.v1i.multiclass/valid'
+
+target_directory = '/users/edatkinson/LLL/classes'
+
+
+
+# Load the dictionary from the JSON file
+with open(json_file_path, 'r') as file:
+    class_filenames = json.load(file)
+
+# Iterate over each class and the corresponding filenames
+for class_name, filenames in class_filenames.items():
+    # # Create a new directory for the class if it doesn
+    class_directory = os.path.join(target_directory, class_name)
+    # os.makedirs(class_directory, exist_ok=True)
+
+    # # Copy each image to the corresponding class directory
+
+    for filename in filenames:
+        source_path = os.path.join(valid_images_directory, filename)
+        target_path = os.path.join(class_directory, filename)
+
+        # Check if the source file exists before copying
+        if os.path.exists(source_path):
+            try:
+                shutil.copy(source_path, target_path)
+                print(f"Copied {filename} to {class_name} folder.")
+            except Exception as e:
+                print(f"Error copying {filename} to {class_name} folder: {e}")
+        else:
+            print(f"Source file {filename} does not exist.")
+
+
+
