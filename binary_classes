@@ -1,0 +1,56 @@
+% read the test CSV file into a table (train)
+data_table_train = readtable('lll.v1i.multiclass./train/_classes_train.csv');
+data_matrix_train = readmatrix('lll.v1i.multiclass./train/_classes_train.csv');
+
+% getting the image names
+image_labels_train = data_table_train(:,1);
+
+class_num_train = zeros(size(data_matrix_train,1),1);
+
+% giving an image 0 or 1 based on prohibted or not
+for i = 1:size(data_matrix_train,1)
+    class = find(data_matrix_train(i,:)==1);
+
+    if isempty(class)
+        class_num_train(i,1) = 0;
+    else
+        class_num_train(i,1) = 1;
+    end
+end
+
+% converting into a table
+column_header = {'class'};
+image_class_train = array2table(class_num_train, 'VariableNames', column_header);
+
+binary_class_train = horzcat(image_labels_train, image_class_train);
+
+% read the test CSV file into a table (test)
+data_table_test = readtable('lll.v1i.multiclass./test/_classes_test.csv');
+data_matrix_test = readmatrix('lll.v1i.multiclass./test/_classes_test.csv');
+
+% getting image names
+image_labels_test = data_table_test(:,1);
+
+class_num_test = zeros(size(data_matrix_test,1),1);
+
+% giving an image 0 or 1 based on prohibted or not
+for i = 1:size(data_matrix_test,1)
+    class = find(data_matrix_test(i,:)==1);
+
+    if isempty(class)
+        class_num_test(i,1) = 0;
+    else
+        class_num_test(i,1) = 1;
+    end
+end
+
+% converting into table
+image_class_test = array2table(class_num_test, 'VariableNames', column_header);
+
+binary_class_test = horzcat(image_labels_test, image_class_test);
+
+% combine tables
+binary_classes = [binary_class_train; binary_class_test];
+
+filename = 'binary_classes.csv';
+writetable(binary_classes, filename);
