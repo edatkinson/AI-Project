@@ -1,0 +1,24 @@
+import torch
+import torch.nn as nn
+import torchvision
+import torchvision.transforms as transforms
+torch.manual_seed(0)
+import os
+import pandas as pd
+from torchvision.io import read_image
+from torch.utils.data import DataLoader
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+from torch.utils.data.dataset import Subset
+
+# Check whether we have a GPU.  Use it if we do.
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+# Open an image file
+image_path = r'C:\Users\arthu\Desktop\University\EngMaths\lll.v1i.multiclass\all\xray_47473_png.rf.413baf04d169ef24caa1f7d0c5caa445.jpg'
+image = mpimg.imread(image_path)
+
+# Display the image
+plt.imshow(image)
+plt.axis('off')  # Hide axis
+plt.show()
