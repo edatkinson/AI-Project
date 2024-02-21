@@ -11,16 +11,22 @@ import matplotlib.pyplot as plt
 # Define transformations
 transform = transforms.Compose([
     transforms.Resize((224, 224)),  # Resize images
-    transforms.ToTensor(),  # Convert images to tensor
+    transforms.ToTensor(),  # Convert images to tensors
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalize
-    # Add more transformations for data augmentation as needed
-])
+    #Augmentation
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomVerticalFlip(),
+    transforms.RandomRotation(20),
+    ])
+
+
+
 # %%
 
 # Load datasets
-train_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/train/', transform=transform)
+train_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/train/', transform=transforms)
 
-val_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/validation/', transform=transform)
+val_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/validation/', transform=transforms)
 
 # Data loaders
 train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
@@ -55,6 +61,7 @@ class CNN(nn.Module):
         x = self.dropout(x)
         x = self.fc2(x)
         return x
+
 # %%
 # Create the model, loss function, and optimizer
 model = CNN()
@@ -62,9 +69,9 @@ criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
 
 # %%
-'''
+
 # Train the model
-n_epochs = 30
+n_epochs = 2
 for epoch in range(n_epochs):
     train_loss = 0.0
     for images, labels in train_loader:
@@ -76,21 +83,21 @@ for epoch in range(n_epochs):
         train_loss += loss.item() * images.size(0)
     train_loss = train_loss / len(train_loader.dataset)
     print(f"Epoch {epoch+1}/{n_epochs}, Training Loss: {train_loss}")
-'''
+
 # %%
 
-# Evaluate the model
-# model.eval()
-# correct = 0
-# total = 0
+#Evaluate the model
+model.eval()
+correct = 0
+total = 0
 
-# with torch.no_grad():
-#     for images, labels in val_loader:
-#         outputs = model(images)
-#         _, predicted = torch.max(outputs, 1)
-#         total += labels.size(0)
-#         correct += (predicted == labels).sum().item()
-# print(f"Validation Accuracy: {100 * correct / total}%")
+with torch.no_grad():
+    for images, labels in val_loader:
+        outputs = model(images)
+        _, predicted = torch.max(outputs, 1)
+        total += labels.size(0)
+        correct += (predicted == labels).sum().item()
+print(f"Validation Accuracy: {100 * correct / total}%")
 # %%
 # Save the model
 torch.save(model.state_dict(), 'model30.pth')
@@ -137,6 +144,28 @@ class_label = train_dataset.classes[class_index]
 
 print(f"Predicted class: {class_label}")
 
+#validation
+
+
+
+# %%
+# Test over the test set
+
+test_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/test/', transform=transform)
+test_loader = DataLoader(test_dataset, batch_size=32, shuffle=True)
+
+model.eval()
+correct = 0
+total = 0
+
+with torch.no_grad():
+    
+    for images, labels in test_loader:
+        outputs = model(images)
+        _, predicted = torch.max(outputs, 1)
+        total += labels.size(0)
+        correct += (predicted == labels).sum().item()
+print(f"Test Accuracy: {100 * correct / total}%")
 
 
 # %%
