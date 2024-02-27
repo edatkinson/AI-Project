@@ -5,6 +5,9 @@ from torch.utils.data import DataLoader
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+
+import os
+from PIL import Image
 #pip install opencv-python (for cv2)
 
 # %%
@@ -13,20 +16,14 @@ transform = transforms.Compose([
     transforms.Resize((224, 224)),  # Resize images
     transforms.ToTensor(),  # Convert images to tensors
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalize
-    #Augmentation
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomVerticalFlip(),
-    transforms.RandomRotation(20),
-    ])
-
-
+])
 
 # %%
 
 # Load datasets
-train_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/train/', transform=transforms)
+train_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/train/', transform=transform)
 
-val_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/validation/', transform=transforms)
+val_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/validation/', transform=transform)
 
 # Data loaders
 train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
@@ -105,7 +102,7 @@ torch.save(model.state_dict(), 'model30.pth')
 
 # %%
 #model = CNN()
-model.load_state_dict(torch.load('model30.pth'))
+#model.load_state_dict(torch.load('model30.pth'))
 model.eval()
 
 
@@ -167,5 +164,83 @@ with torch.no_grad():
         correct += (predicted == labels).sum().item()
 print(f"Test Accuracy: {100 * correct / total}%")
 
+# %%
+
+#This cell is for the confusion matrix 
+
+from sklearn.metrics import confusion_matrix
+import seaborn as sns
+import pandas as pd
+import matplotlib.pyplot as plt
+
+model.eval()
+y_true = []
+y_pred = []
+
+with torch.no_grad():
+    for images, labels in test_loader:
+        outputs = model(images)
+        _, predicted = torch.max(outputs, 1)
+        y_true += labels.tolist()
+        y_pred += predicted.tolist()
+
+# Update the classes to include all the classes present in the confusion matrix
+classes = ['Baton', 'Bullet', 'Null']
+
+cm = confusion_matrix(y_true, y_pred)
+cm_df = pd.DataFrame(cm, index=classes, columns=classes)
+
+plt.figure(figsize=(10, 8))
+sns.heatmap(cm_df, annot=True, cmap='Blues')
+plt.xlabel('Predicted')
+plt.ylabel('Actual')
+plt.title('Confusion Matrix')
+plt.show()
+
+
+# %%
+# Agumentation Of Images, Saves them to the same folder
+
+# 
+
+transform = transforms.Compose([
+    transforms.RandomVerticalFlip(),
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomRotation(15),
+    transforms.Resize(224), # Assuming you're working with 224x224 images
+    transforms.ToTensor()
+])
+
+def augment_images(directory, null_class_name='Null'):
+    for class_name in os.listdir(directory):
+        # Skip the null class
+        if class_name == null_class_name:
+            continue
+
+        class_path = os.path.join(directory, class_name)
+        if not os.path.isdir(class_path):
+            continue
+        
+        for img_name in os.listdir(class_path):
+            img_path = os.path.join(class_path, img_name)
+            img = Image.open(img_path).convert('RGB')
+            
+            # Apply the transformations
+            augmented_img = transform(img)
+            
+            # Convert back to PIL image to save
+            save_img = transforms.ToPILImage()(augmented_img)
+            
+            # Define a new image name
+            base_name, ext = os.path.splitext(img_name)
+            new_img_name = f"{base_name}_aug{ext}"
+            
+            # Save the image back to the same class folder
+            save_img.save(os.path.join(class_path, new_img_name))
+
+# Example usage, assuming 'null' is the class you want to exclude
+
+# Example usage
+augment_images('/users/edatkinson/LLL/split_classes/train/', 'Null')
 
 # %%
