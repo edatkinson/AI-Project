@@ -63,7 +63,22 @@ class CNN(nn.Module):
 # Create the model, loss function, and optimizer
 model = CNN()
 criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+optimizer = torch.optim.SGD(model.parameters(), lr=0.0001, weight_decay=0.01, momentum=0.9)
+
+
+# %%
+#Cell for checking cuda is available
+
+train_on_gpu = torch.cuda.is_available()
+
+if not train_on_gpu:
+    print('CUDA is not available.  Training on CPU ...')
+else:
+    print('CUDA is available!  Training on GPU ...')
+
+if train_on_gpu:
+    model.cuda()
+
 
 # %%
 
@@ -72,6 +87,8 @@ n_epochs = 2
 for epoch in range(n_epochs):
     train_loss = 0.0
     for images, labels in train_loader:
+        if train_on_gpu:
+            images, labels = images.cuda(), labels.cuda()  # Move data to GPU
         optimizer.zero_grad()
         output = model(images)
         loss = criterion(output, labels)
@@ -103,7 +120,7 @@ print(f"Validation Accuracy: {100 * correct / total}%")
 # %%
 #model = CNN()
 #model.load_state_dict(torch.load('model30.pth'))
-model.eval()
+#model.eval()
 
 
 # Load the image
@@ -196,50 +213,3 @@ plt.xlabel('Predicted')
 plt.ylabel('Actual')
 plt.title('Confusion Matrix')
 plt.show()
-
-
-# %%
-# Agumentation Of Images, Saves them to the same folder
-
-# 
-
-transform = transforms.Compose([
-    transforms.RandomVerticalFlip(),
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomRotation(40),
-    transforms.Resize(224), # Assuming you're working with 224x224 images
-    transforms.ToTensor()
-])
-
-def augment_images(directory, null_class_name='Null'):
-    for class_name in os.listdir(directory):
-        # Skip the null class
-        if class_name == null_class_name:
-            continue
-
-        class_path = os.path.join(directory, class_name)
-        if not os.path.isdir(class_path):
-            continue
-        
-        for img_name in os.listdir(class_path):
-            img_path = os.path.join(class_path, img_name)
-            img = Image.open(img_path).convert('RGB')
-            
-            # Apply the transformations
-            augmented_img = transform(img)
-            
-            # Convert back to PIL image to save
-            save_img = transforms.ToPILImage()(augmented_img)
-            
-            # Define a new image name
-            base_name, ext = os.path.splitext(img_name)
-            new_img_name = f"{base_name}_aug{ext}"
-            
-            # Save the image back to the same class folder
-            save_img.save(os.path.join(class_path, new_img_name))
-
-# using Null as the class which you are excluding during augmentation
-#Augments all classes execpt from the Null class, will edit this as we introduce more classes
-augment_images('/users/edatkinson/LLL/split_classes/train/', 'Null')
-
-# %%

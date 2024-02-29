@@ -5,7 +5,8 @@ from torch.utils.data import DataLoader
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-
+import torch.nn as nn
+import torch.nn.functional as F
 import os
 from PIL import Image
 #pip install opencv-python (for cv2)
@@ -25,6 +26,29 @@ train_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/t
 
 val_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/validation/', transform=transform)
 
+test_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/test/', transform=transform)
+
+
+# Data loaders
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=32, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=32, shuffle=True)
+
+#how to reduce the amount of images loaded from a specific class
+# %%
+# Define the maximum number of images to load from a specific class
+
+max_images_per_class = 5000
+
+# Load datasets with reduced number of images
+train_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/train/', transform=transform)
+train_dataset.samples = [(image, label) for image, label in train_dataset.samples if label != train_dataset.class_to_idx['Null'] or label == train_dataset.class_to_idx['Null'] and label == max_images_per_class]
+
+val_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/validation/', transform=transform)
+val_dataset.samples = [(image, label) for image, label in val_dataset.samples if label != val_dataset.class_to_idx['Null'] or label == val_dataset.class_to_idx['Null'] and label == max_images_per_class]
+
+
+
 # Data loaders
 train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=32, shuffle=True)
@@ -32,43 +56,52 @@ val_loader = DataLoader(val_dataset, batch_size=32, shuffle=True)
 
 #Set up the CNN model to classify the images 
 # %%
-import torch.nn as nn
-import torch.nn.functional as F
-# %%
+
 class CNN(nn.Module):
     def __init__(self):
         super(CNN, self).__init__()
-        self.conv1 = nn.Conv2d(3, 16, 3, padding=1)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(16, 32, 3, padding=1)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.conv3 = nn.Conv2d(32, 64, 3, padding=1)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.fc1 = nn.Linear(64 * 28 * 28, 500)
+        # Convolutional layers
+        self.conv1 = nn.Conv2d(3, 16, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm2d(16)
+        self.pool1 = nn.MaxPool2d(2, 2)  # Adding pooling layer
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm2d(32)
+        self.pool2 = nn.MaxPool2d(2, 2)  # Adding pooling layer
+        self.conv3 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        self.bn3 = nn.BatchNorm2d(64)
+        self.pool3 = nn.MaxPool2d(2, 2)  # Adding pooling layer
+        
+        # After 3 rounds of halving the dimensions, the size calculation needs adjustment
+        # For an input of 224x224, after three poolings, the size is 224 / 2 / 2 / 2 = 28
+        self.fc1_size = 64 * 28 * 28  # Adjusted based on the pooling layers
+        self.fc1 = nn.Linear(self.fc1_size, 500)
         self.fc2 = nn.Linear(500, 6)
         self.dropout = nn.Dropout(0.25)
 
     def forward(self, x):
-        x = self.pool(F.relu(self.conv1(x)))
-        x = self.pool(F.relu(self.conv2(x)))
-        x = self.pool(F.relu(self.conv3(x)))
-        x = x.view(-1, 64 * 28 * 28)
+        x = self.pool1(F.relu(self.bn1(self.conv1(x))))  # Apply pooling
+        x = self.pool2(F.relu(self.bn2(self.conv2(x))))  # Apply pooling
+        x = self.pool3(F.relu(self.bn3(self.conv3(x))))  # Apply pooling
+        x = x.view(-1, self.fc1_size)  # Flatten the output for the fully connected layer
         x = self.dropout(x)
         x = F.relu(self.fc1(x))
         x = self.dropout(x)
         x = self.fc2(x)
         return x
 
+
+
 # %%
 # Create the model, loss function, and optimizer
 model = CNN()
 criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-6)
+
 
 # %%
 
 # Train the model
-n_epochs = 2
+n_epochs = 3
 for epoch in range(n_epochs):
     train_loss = 0.0
     for images, labels in train_loader:
@@ -95,55 +128,6 @@ with torch.no_grad():
         total += labels.size(0)
         correct += (predicted == labels).sum().item()
 print(f"Validation Accuracy: {100 * correct / total}%")
-# %%
-# Save the model
-#torch.save(model.state_dict(), 'model30.pth')
-
-
-# %%
-#model = CNN()
-#model.load_state_dict(torch.load('model30.pth'))
-model.eval()
-
-
-# Load the image
-image_path = '/users/edatkinson/LLL/split_classes/test/Bullet/xray_08143_png.rf.e16c328f9e72c5aa1a529a916a11a23f.jpg'
-image = cv2.imread(image_path)
-image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-# Preprocess the image
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
-
-from PIL import Image
-
-# Assuming 'image' is your NumPy array
-image_pil = Image.fromarray(image)
-
-# Now apply the transform
-input_tensor = transform(image_pil)
-
-input_batch = input_tensor.unsqueeze(0)
-
-# Make a prediction
-#model.eval()
-with torch.no_grad():
-    output = model(input_batch)
-
-# Get the predicted class
-_, predicted = torch.max(output, 1)
-class_index = predicted.item()
-print(class_index)
-class_label = train_dataset.classes[class_index]
-
-print(f"Predicted class: {class_label}")
-
-#validation
-
-
 
 # %%
 # Test over the test set
@@ -156,7 +140,6 @@ correct = 0
 total = 0
 
 with torch.no_grad():
-    
     for images, labels in test_loader:
         outputs = model(images)
         _, predicted = torch.max(outputs, 1)
@@ -196,50 +179,5 @@ plt.xlabel('Predicted')
 plt.ylabel('Actual')
 plt.title('Confusion Matrix')
 plt.show()
-
-
-# %%
-# Agumentation Of Images, Saves them to the same folder
-
-# 
-
-transform = transforms.Compose([
-    transforms.RandomVerticalFlip(),
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomRotation(40),
-    transforms.Resize(224), # Assuming you're working with 224x224 images
-    transforms.ToTensor()
-])
-
-def augment_images(directory, null_class_name='Null'):
-    for class_name in os.listdir(directory):
-        # Skip the null class
-        if class_name == null_class_name:
-            continue
-
-        class_path = os.path.join(directory, class_name)
-        if not os.path.isdir(class_path):
-            continue
-        
-        for img_name in os.listdir(class_path):
-            img_path = os.path.join(class_path, img_name)
-            img = Image.open(img_path).convert('RGB')
-            
-            # Apply the transformations
-            augmented_img = transform(img)
-            
-            # Convert back to PIL image to save
-            save_img = transforms.ToPILImage()(augmented_img)
-            
-            # Define a new image name
-            base_name, ext = os.path.splitext(img_name)
-            new_img_name = f"{base_name}_aug{ext}"
-            
-            # Save the image back to the same class folder
-            save_img.save(os.path.join(class_path, new_img_name))
-
-# using Null as the class which you are excluding during augmentation
-#Augments all classes execpt from the Null class, will edit this as we introduce more classes
-augment_images('/users/edatkinson/LLL/split_classes/train/', 'Null')
 
 # %%
