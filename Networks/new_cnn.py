@@ -1,7 +1,7 @@
 # %%
 import torch
 from torchvision import datasets, transforms
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
@@ -21,6 +21,39 @@ transform = transforms.Compose([
 
 # %%
 
+#######Stratified Sampling:########
+
+train_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/train/', transform=transform)
+val_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/validation/', transform=transform)
+
+# Calculate weights for each class
+train_targets = torch.tensor(train_dataset.targets)
+class_sample_count = torch.tensor([(train_targets == t).sum() for t in torch.unique(train_targets, sorted=True)])
+weight = 1. / class_sample_count.float()
+samples_weight = torch.tensor([weight[t] for t in train_targets])
+
+# WeightedRandomSampler for training set
+train_sampler = WeightedRandomSampler(weights=samples_weight, num_samples=len(samples_weight), replacement=True)
+
+# For validation, you can repeat the process if you want stratified sampling there as well
+val_targets = torch.tensor(val_dataset.targets)
+val_class_sample_count = torch.tensor([(val_targets == t).sum() for t in torch.unique(val_targets, sorted=True)])
+val_weight = 1. / val_class_sample_count.float()
+val_samples_weight = torch.tensor([val_weight[t] for t in val_targets])
+
+val_sampler = WeightedRandomSampler(weights=val_samples_weight, num_samples=len(val_samples_weight), replacement=True)
+
+# Data loaders with stratified sampling
+train_loader = DataLoader(train_dataset, batch_size=10, sampler=train_sampler)
+val_loader = DataLoader(val_dataset, batch_size=10, sampler=val_sampler)
+
+
+
+
+
+
+#%%
+
 # Load datasets
 train_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/train/', transform=transform)
 
@@ -35,6 +68,9 @@ val_loader = DataLoader(val_dataset, batch_size=32, shuffle=True)
 test_loader = DataLoader(test_dataset, batch_size=32, shuffle=True)
 
 #how to reduce the amount of images loaded from a specific class
+
+
+
 # %%
 # Define the maximum number of images to load from a specific class
 
