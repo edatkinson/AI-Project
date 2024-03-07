@@ -21,7 +21,7 @@ transform = transforms.Compose([
 
 # %%
 
-#######Stratified Sampling:########
+######Stratified Sampling:########
 
 train_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/train/', transform=transform)
 val_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/validation/', transform=transform)
@@ -29,26 +29,24 @@ val_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/val
 # Calculate weights for each class
 train_targets = torch.tensor(train_dataset.targets)
 class_sample_count = torch.tensor([(train_targets == t).sum() for t in torch.unique(train_targets, sorted=True)])
+print(class_sample_count)
 weight = 1. / class_sample_count.float()
+print(weight)
 samples_weight = torch.tensor([weight[t] for t in train_targets])
-
 # WeightedRandomSampler for training set
 train_sampler = WeightedRandomSampler(weights=samples_weight, num_samples=len(samples_weight), replacement=True)
 
 # For validation, you can repeat the process if you want stratified sampling there as well
-val_targets = torch.tensor(val_dataset.targets)
-val_class_sample_count = torch.tensor([(val_targets == t).sum() for t in torch.unique(val_targets, sorted=True)])
-val_weight = 1. / val_class_sample_count.float()
-val_samples_weight = torch.tensor([val_weight[t] for t in val_targets])
+# val_targets = torch.tensor(val_dataset.targets)
+# val_class_sample_count = torch.tensor([(val_targets == t).sum() for t in torch.unique(val_targets, sorted=True)])
+# val_weight = 1. / val_class_sample_count.float()
+# val_samples_weight = torch.tensor([val_weight[t] for t in val_targets])
 
-val_sampler = WeightedRandomSampler(weights=val_samples_weight, num_samples=len(val_samples_weight), replacement=True)
+# val_sampler = WeightedRandomSampler(weights=val_samples_weight, num_samples=len(val_samples_weight), replacement=True)
 
 # Data loaders with stratified sampling
-train_loader = DataLoader(train_dataset, batch_size=10, sampler=train_sampler)
-val_loader = DataLoader(val_dataset, batch_size=10, sampler=val_sampler)
-
-
-
+train_loader = DataLoader(train_dataset, batch_size=32,sampler=train_sampler)
+val_loader = DataLoader(val_dataset, batch_size=32)
 
 
 
@@ -64,31 +62,8 @@ test_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/te
 
 # Data loaders
 train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=32, shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=32, shuffle=True)
-
-#how to reduce the amount of images loaded from a specific class
-
-
-
-# %%
-# Define the maximum number of images to load from a specific class
-
-max_images_per_class = 5000
-
-# Load datasets with reduced number of images
-train_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/train/', transform=transform)
-train_dataset.samples = [(image, label) for image, label in train_dataset.samples if label != train_dataset.class_to_idx['Null'] or label == train_dataset.class_to_idx['Null'] and label == max_images_per_class]
-
-val_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/validation/', transform=transform)
-val_dataset.samples = [(image, label) for image, label in val_dataset.samples if label != val_dataset.class_to_idx['Null'] or label == val_dataset.class_to_idx['Null'] and label == max_images_per_class]
-
-
-
-# Data loaders
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=32, shuffle=True)
-
+val_loader = DataLoader(val_dataset, batch_size=32)
+test_loader = DataLoader(test_dataset, batch_size=32)
 
 #Set up the CNN model to classify the images 
 # %%
@@ -128,6 +103,25 @@ class CNN(nn.Module):
 
 
 # %%
+
+#custom cross entropy loss function
+
+class CustomCrossEntropyLoss(torch.nn.Module):
+    def __init__(self):
+        super(CustomCrossEntropyLoss, self).__init__()
+
+    def forward(self, input, target):
+        log_softmax_values = torch.log_softmax(input, dim=1)
+        
+        # Calculate class weights
+        class_weights = torch.tensor([1.0 / count for count in torch.bincount(target)], device=input.device)
+        
+        # Weight the losses by class weights
+        weighted_losses = -target * log_softmax_values * class_weights[target]
+        
+        return torch.mean(torch.sum(weighted_losses, dim=1))
+
+
 # Create the model, loss function, and optimizer
 model = CNN()
 criterion = nn.CrossEntropyLoss()
@@ -136,19 +130,48 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-6)
 
 # %%
 
-# Train the model
-n_epochs = 3
+train_on_gpu = torch.cuda.is_available()
+
+if not train_on_gpu:
+    print('CUDA is not available.  Training on CPU ...')
+else:
+    print('CUDA is available!  Training on GPU ...')
+
+if train_on_gpu:
+    model.cuda()
+
+n_epochs = 2
+print_every = 50
+
 for epoch in range(n_epochs):
     train_loss = 0.0
-    for images, labels in train_loader:
+    correct = 0
+    total = 0
+    
+    for batch_idx, (images, labels) in enumerate(train_loader):
+        if train_on_gpu:
+            images, labels = images.cuda(), labels.cuda()  # Move data to GPU
+        
         optimizer.zero_grad()
         output = model(images)
         loss = criterion(output, labels)
         loss.backward()
         optimizer.step()
+        
         train_loss += loss.item() * images.size(0)
+        _, predicted = torch.max(output, 1)
+        total += labels.size(0)
+        correct += (predicted == labels).sum().item()
+        
+        if (batch_idx + 1) % print_every == 0:
+            accuracy = 100 * correct / total
+            print(f"Epoch {epoch+1}/{n_epochs}, Batch {batch_idx+1}/{len(train_loader)}, Training Loss: {train_loss / total}, Training Accuracy: {accuracy}%")
+    
     train_loss = train_loss / len(train_loader.dataset)
-    print(f"Epoch {epoch+1}/{n_epochs}, Training Loss: {train_loss}")
+    accuracy = 100 * correct / total
+    print(f"Epoch {epoch+1}/{n_epochs}, Training Loss: {train_loss}, Training Accuracy: {accuracy}%")
+
+
 
 # %%
 
@@ -169,7 +192,8 @@ print(f"Validation Accuracy: {100 * correct / total}%")
 # Test over the test set
 
 test_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/test/', transform=transform)
-test_loader = DataLoader(test_dataset, batch_size=32, shuffle=True)
+#print(test_dataset)
+test_loader = DataLoader(test_dataset, batch_size=10, shuffle=False)
 
 model.eval()
 correct = 0
@@ -203,8 +227,20 @@ with torch.no_grad():
         y_true += labels.tolist()
         y_pred += predicted.tolist()
 
-# Update the classes to include all the classes present in the confusion matrix
-classes = ['Baton', 'Bullet', 'Null']
+# Define the correct class names in the same order as the labels
+classes = ['Baton', 'Bullet', 'HandCuffs', 'Null', 'Scissors'] #needs to be in alphabetical order
+
+# Print the accuracies for each class 
+
+for i in range(len(classes)):
+    class_total = 0
+    class_correct = 0
+    for j in range(len(y_true)):
+        if y_true[j] == i:
+            class_total += 1
+            if y_pred[j] == y_true[j]:
+                class_correct += 1
+    print(f'Accuracy of {classes[i]}: {100 * class_correct / class_total}%')
 
 cm = confusion_matrix(y_true, y_pred)
 cm_df = pd.DataFrame(cm, index=classes, columns=classes)

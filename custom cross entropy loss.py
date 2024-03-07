@@ -25,7 +25,7 @@ class CustomCrossEntropyLoss(torch.nn.Module):
 
   
   # You can use this custom loss function in your PyTorch models in the same way as before. Here's a usage example similar to the previous one:
-  import torch
+import torch
 import torch.nn as nn
 import torch.optim as optim
 
