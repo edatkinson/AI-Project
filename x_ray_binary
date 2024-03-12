@@ -26,8 +26,9 @@ data_dir = 'C:/Users/arthu/Desktop/University/EngMaths/Third_year/Intro_to_AI/ll
 
 # Define transforms
 transform = transforms.Compose([
-    transforms.Resize((128,128)),
-    transforms.ToTensor()
+    transforms.Resize((224,224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
 # Create dataset class
@@ -183,9 +184,13 @@ class CustomCrossEntropyLoss(nn.Module):
 
 #loss_func = CustomCrossEntropyLoss()
 loss_func = nn.CrossEntropyLoss()
-optimiser = optim.Adam(net.parameters(), lr = 0.001)
+optimiser = optim.Adam(net.parameters(), lr = 0.001, weight_decay = 1e-6)
 
 # Function for training one epoch
+
+train_accuracies = []
+metrics = []
+
 def train_epoch():
   net.train(True) # set to training mode
 
@@ -213,10 +218,50 @@ def train_epoch():
       avg_loss = running_loss/50  # get the average loss across batches
       avg_acc = (running_accuracy/50) * 100 # get the average accuracy across batches
       print('Batch {0}, Loss: {1:.3f}, Accuracy: {2:.1f}%'.format(batch_index+1, avg_loss, avg_acc))
+      train_accuracies.append(avg_acc)
       
       running_loss = 0
       running_accuracy = 0
-
+      
+    # evaluate test acc 
+    test_acc = None
+    #val_acc = None
+    #val_loss = None
+    print_every = 50
+    if (batch_index + 1) % print_every == 0:
+        net.eval()
+        test_correct = 0
+        test_total = 0
+        with torch.no_grad():
+            for test_images, test_labels in test_loader:
+                test_images, test_labels = test_images.to(device), test_labels.to(device)
+                test_outputs = net(test_images)
+                _, test_predicted = torch.max(test_outputs, 1)
+                test_total += test_labels.size(0)
+                test_correct += (test_predicted == test_labels).sum().item()
+        test_acc = 100*test_correct/test_total
+        
+        #evaluate val acc
+        # val_correct = 0
+        # val_total = 0
+        
+        # with torch.no_grad():
+        #     for val_images, val_labels in val_loader:
+        #         val_images, val_labels = val_images.to(device), val_labels.to(device)
+        #         val_outputs = net(val_images)
+        #         _, val_predicted = torch.max(val_outputs, 1)
+        #         val_total += val_labels.size(0)
+        #         val_correct += (val_predicted == val_labels).sum().item()
+        #         loss = loss_func(outputs, labels) # compare model predictions with labels
+        # val_acc = 100*val_correct/val_total
+        # val_loss = loss.item() # update the loss
+        
+        # net.train()
+        
+    metrics.append({
+        'test_accuracy': test_acc,
+        'batch': batch_index + 1})
+    
   print()
 
 # Function for testing
@@ -278,7 +323,7 @@ def validate_epoch():
 
 # Training loop
 
-num_epochs = 20
+num_epochs = 1
 
 for i in range(num_epochs):
   print('Epoch:', i+1, '\n')
@@ -315,25 +360,38 @@ plt.ylabel('Actual')
 plt.title('Confusion Matrix')
 plt.show()
 
-# Plotting accuracy and loss graphs
-epochs = range(1, len(val_accuracies) + 1)
+# Plotting the loss graph
+df = pd.DataFrame(metrics)
+batch_length = df['batch'].apply(len)
+test_acc = df['test_accuracy']
+
 plt.figure(2)
-plt.plot(epochs, val_accuracies, label = 'Validation Accuracy')
-plt.plot(epochs, test_accuracies, label = 'Test Accuracy')
-plt.title('Validation and Test Accuracies vs Number of Epochs')
-plt.xlabel('Epochs')
+plt.plot(range(batch_length), test_acc, label='Test Accuracy')
+plt.xlabel('Batch')
 plt.ylabel('Accuracy')
+plt.title('Testing Accuracy')
 plt.legend()
-plt.grid(True)
 plt.show()
 
-plt.figure(3)
-plt.plot(epochs, val_losses, label = 'Validation Loss')
-plt.title('Validation loss vs Number of Epochs')
-plt.xlabel('Epochs')
-plt.ylabel('Loss')
-plt.grid(True)
-plt.show()
+# Plotting accuracy and loss graphs
+# epochs = range(1, len(val_accuracies) + 1)
+# plt.figure(2)
+# plt.plot(epochs, val_accuracies, label = 'Validation Accuracy')
+# plt.plot(epochs, test_accuracies, label = 'Test Accuracy')
+# plt.title('Validation and Test Accuracies vs Number of Epochs')
+# plt.xlabel('Epochs')
+# plt.ylabel('Accuracy')
+# plt.legend()
+# plt.grid(True)
+# plt.show()
+
+# plt.figure(3)
+# plt.plot(epochs, val_losses, label = 'Validation Loss')
+# plt.title('Validation loss vs Number of Epochs')
+# plt.xlabel('Epochs')
+# plt.ylabel('Loss')
+# plt.grid(True)
+# plt.show()
 
 # Generate a classification report using the predicted and actual labels
 class_report = classification_report(y_true, y_pred_flattened, target_names=['Safe', 'Prohibited'])
