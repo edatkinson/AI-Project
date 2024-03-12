@@ -86,7 +86,7 @@ class CNN(nn.Module):
         # For an input of 224x224, after three poolings, the size is 224 / 2 / 2 / 2 = 28
         self.fc1_size = 64 * 28 * 28  # Adjusted based on the pooling layers
         self.fc1 = nn.Linear(self.fc1_size, 500)
-        self.fc2 = nn.Linear(500, 6)
+        self.fc2 = nn.Linear(500, 5)
         self.dropout = nn.Dropout(0.25)
 
     def forward(self, x):
@@ -106,29 +106,82 @@ class CNN(nn.Module):
 
 #custom cross entropy loss function
 
-class CustomCrossEntropyLoss(torch.nn.Module):
-    def __init__(self):
-        super(CustomCrossEntropyLoss, self).__init__()
+class WeightedCrossEntropyLoss(torch.nn.Module):
+    def __init__(self, class_weights):
+        super(WeightedCrossEntropyLoss, self).__init__()
+        self.class_weights = class_weights
 
     def forward(self, input, target):
-        log_softmax_values = torch.log_softmax(input, dim=1)
-        
-        # Calculate class weights
-        class_weights = torch.tensor([1.0 / count for count in torch.bincount(target)], device=input.device)
-        
-        # Weight the losses by class weights
-        weighted_losses = -target * log_softmax_values * class_weights[target]
-        
-        return torch.mean(torch.sum(weighted_losses, dim=1))
+        # The F.cross_entropy function already applies log_softmax internally,
+        # so we pass the raw scores directly.
+        return F.cross_entropy(input, target, weight=self.class_weights)
+
+
+class_counts = class_sample_count  # counts for classes
+print(class_counts)
+total_count = sum(class_counts)
+classes_weights = torch.tensor([total_count / c for c in class_counts], dtype=torch.float32)
+classes_weights /= classes_weights.min() #normalize the weights
+print(f'Normalised Class Weights, Need to play around with these:{classes_weights}')
+# If you're using CUDA, move the weights to the GPU
+if torch.cuda.is_available():
+    classes_weights = classes_weights.cuda()
 
 
 # Create the model, loss function, and optimizer
 model = CNN()
 criterion = nn.CrossEntropyLoss()
+#criterion = WeightedCrossEntropyLoss(classes_weights)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-6)
 
 
 # %%
+
+# train_on_gpu = torch.cuda.is_available()
+
+# if not train_on_gpu:
+#     print('CUDA is not available.  Training on CPU ...')
+# else:
+#     print('CUDA is available!  Training on GPU ...')
+
+# if train_on_gpu:
+#     model.cuda()
+
+# n_epochs = 2
+# print_every = 50
+
+# for epoch in range(n_epochs):
+#     train_loss = 0.0
+#     correct = 0
+#     total = 0
+    
+#     for batch_idx, (images, labels) in enumerate(train_loader):
+#         if train_on_gpu:
+#             images, labels = images.cuda(), labels.cuda()  # Move data to GPU
+        
+#         optimizer.zero_grad()
+#         output = model(images)
+#         loss = criterion(output, labels)
+#         loss.backward()
+#         optimizer.step()
+        
+#         train_loss += loss.item() * images.size(0)
+#         _, predicted = torch.max(output, 1)
+#         total += labels.size(0)
+#         correct += (predicted == labels).sum().item()
+        
+#         if (batch_idx + 1) % print_every == 0:
+#             accuracy = 100 * correct / total
+#             print(f"Epoch {epoch+1}/{n_epochs}, Batch {batch_idx+1}/{len(train_loader)}, Training Loss: {train_loss / total}, Training Accuracy: {accuracy}%")
+    
+#     train_loss = train_loss / len(train_loader.dataset)
+#     accuracy = 100 * correct / total
+#     print(f"Epoch {epoch+1}/{n_epochs}, Training Loss: {train_loss}, Training Accuracy: {accuracy}%")
+
+import pandas as pd
+import torch
+
+# Assuming `model`, `train_loader`, `test_loader`, `optimizer`, `criterion` are defined
 
 train_on_gpu = torch.cuda.is_available()
 
@@ -139,9 +192,10 @@ else:
 
 if train_on_gpu:
     model.cuda()
-
+    
 n_epochs = 2
 print_every = 50
+metrics = []
 
 for epoch in range(n_epochs):
     train_loss = 0.0
@@ -150,7 +204,7 @@ for epoch in range(n_epochs):
     
     for batch_idx, (images, labels) in enumerate(train_loader):
         if train_on_gpu:
-            images, labels = images.cuda(), labels.cuda()  # Move data to GPU
+            images, labels = images.cuda(), labels.cuda()
         
         optimizer.zero_grad()
         output = model(images)
@@ -162,14 +216,47 @@ for epoch in range(n_epochs):
         _, predicted = torch.max(output, 1)
         total += labels.size(0)
         correct += (predicted == labels).sum().item()
+
+        # Calculate metrics after each batch
+        batch_accuracy = 100 * correct / total
+        batch_loss = train_loss / total
+        
+        # Optionally, evaluate test accuracy at a reduced frequency to save computation
+        test_accuracy = None
+        if (batch_idx + 1) % print_every == 0:  # Example: Calculate test accuracy every 'print_every' batches
+            model.eval()  # Set model to evaluate mode
+            test_correct = 0
+            test_total = 0
+            with torch.no_grad():
+                for test_images, test_labels in test_loader:
+                    if train_on_gpu:
+                        test_images, test_labels = test_images.cuda(), test_labels.cuda()
+                    test_outputs = model(test_images)
+                    _, test_predicted = torch.max(test_outputs, 1)
+                    test_total += test_labels.size(0)
+                    test_correct += (test_predicted == test_labels).sum().item()
+            test_accuracy = 100 * test_correct / test_total
+            model.train()  # Set model back to train mode
+
+        metrics.append({
+            'epoch': epoch + 1,
+            'batch': batch_idx + 1,
+            'train_loss': batch_loss,
+            'train_accuracy': batch_accuracy,
+            'test_accuracy': test_accuracy  # This will be None if not computed
+        })
         
         if (batch_idx + 1) % print_every == 0:
-            accuracy = 100 * correct / total
-            print(f"Epoch {epoch+1}/{n_epochs}, Batch {batch_idx+1}/{len(train_loader)}, Training Loss: {train_loss / total}, Training Accuracy: {accuracy}%")
-    
-    train_loss = train_loss / len(train_loader.dataset)
-    accuracy = 100 * correct / total
-    print(f"Epoch {epoch+1}/{n_epochs}, Training Loss: {train_loss}, Training Accuracy: {accuracy}%")
+            print(f"Epoch {epoch+1}/{n_epochs}, Batch {batch_idx+1}/{len(train_loader)}, Training Loss: {batch_loss}, Training Accuracy: {batch_accuracy}%, Test Accuracy: {'N/A' if test_accuracy is None else f'{test_accuracy}%'}")
+
+    # Log epoch-level metrics
+    epoch_loss = train_loss / len(train_loader.dataset)
+    epoch_accuracy = 100 * correct / total
+    print(f"Epoch {epoch+1}/{n_epochs}, End of Epoch, Training Loss: {epoch_loss}, Training Accuracy: {epoch_accuracy}%")
+
+# Convert metrics to DataFrame and save as CSV
+df = pd.DataFrame(metrics)
+df.to_csv('training_testing_metrics.csv', index=False)
 
 
 
@@ -189,12 +276,12 @@ with torch.no_grad():
 print(f"Validation Accuracy: {100 * correct / total}%")
 
 # %%
-# Test over the test set
+# Load test data
 
 test_dataset = datasets.ImageFolder(root='/users/edatkinson/LLL/split_classes/test/', transform=transform)
 #print(test_dataset)
 test_loader = DataLoader(test_dataset, batch_size=10, shuffle=False)
-
+# %%
 model.eval()
 correct = 0
 total = 0
