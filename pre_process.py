@@ -100,7 +100,7 @@ Create a list of filenames which share the same class label for each class
 
 
 # Directory containing images of each class
-source_dir = '/users/edatkinson/LLL/classes/Hammer/'
+source_dir = '/users/edatkinson/LLL/classes/Knife/'
 
 # Target directory for train, validation, and test datasets
 target_base_dir = '/users/edatkinson/LLL/split_classes/'
@@ -112,7 +112,7 @@ test_ratio = 0.1
 
 # Create target directories
 for split in ['train', 'validation', 'test']:
-    split_dir = os.path.join(target_base_dir, split, 'Hammer')
+    split_dir = os.path.join(target_base_dir, split, 'Knife')
     os.makedirs(split_dir, exist_ok=True)
 
 # List all files in the source directory
@@ -128,9 +128,9 @@ def copy_files(file_list, destination_folder):
         shutil.copy(os.path.join(source_dir, file), destination_folder)
 
 # Copy files to their new directories
-copy_files(train_files, os.path.join(target_base_dir, 'train', 'Hammer'))
-copy_files(val_files, os.path.join(target_base_dir, 'validation', 'Hammer'))
-copy_files(test_files, os.path.join(target_base_dir, 'test', 'Hammer'))
+copy_files(train_files, os.path.join(target_base_dir, 'train', 'Knife'))
+copy_files(val_files, os.path.join(target_base_dir, 'validation', 'Knife'))
+copy_files(test_files, os.path.join(target_base_dir, 'test', 'Knife'))
 
 print("Files have been successfully split into train, validation, and test datasets.")
 

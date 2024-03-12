@@ -86,7 +86,7 @@ class CNN(nn.Module):
         # For an input of 224x224, after three poolings, the size is 224 / 2 / 2 / 2 = 28
         self.fc1_size = 64 * 28 * 28  # Adjusted based on the pooling layers
         self.fc1 = nn.Linear(self.fc1_size, 500)
-        self.fc2 = nn.Linear(500, 5)
+        self.fc2 = nn.Linear(500, 8)
         self.dropout = nn.Dropout(0.25)
 
     def forward(self, x):
@@ -130,8 +130,8 @@ if torch.cuda.is_available():
 
 # Create the model, loss function, and optimizer
 model = CNN()
-#criterion = nn.CrossEntropyLoss()
-criterion = WeightedCrossEntropyLoss(classes_weights)
+criterion = nn.CrossEntropyLoss()
+#criterion = WeightedCrossEntropyLoss(classes_weights)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-6)
 
 
@@ -195,8 +195,8 @@ for epoch in range(n_epochs):
                     test_total += test_labels.size(0)
                     test_correct += (test_predicted == test_labels).sum().item()
             test_accuracy = 100 * test_correct / test_total
+            #Also, optionally, evaluate validation accuracy
 
-            # Also, optionally, evaluate validation accuracy
             val_accuracy = None
             val_correct = 0
             val_total = 0
@@ -232,7 +232,7 @@ for epoch in range(n_epochs):
 
 # Convert metrics to DataFrame and save as CSV
 df = pd.DataFrame(metrics)
-df.to_csv('training_testing_metrics.csv', index=False)
+df.to_csv('metrics_CrossEntropy_Loss.csv', index=False)
 
 
 
@@ -291,7 +291,7 @@ with torch.no_grad():
         y_pred += predicted.tolist()
 
 # Define the correct class names in the same order as the labels
-classes = ['Baton', 'Bullet', 'HandCuffs', 'Null', 'Scissors'] #needs to be in alphabetical order
+classes = ['Baton', 'Bullet','Gun','Hammer','HandCuffs', 'Null', 'Scissors'] #needs to be in alphabetical order
 
 # Print the accuracies for each class 
 
