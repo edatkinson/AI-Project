@@ -17,6 +17,7 @@ from sklearn.metrics import confusion_matrix
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report
+import torch.nn.functional as F
 
 # Check whether we have a GPU.  Use it if we do.
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -167,23 +168,23 @@ for i, data in enumerate(train_loader):
 # Specifying hyperparameters
 
 class CustomCrossEntropyLoss(nn.Module):
-    def __init__(self):
+    def __init__(self, class_weights):
         super(CustomCrossEntropyLoss, self).__init__()
+        self.class_weights = class_weights
 
     def forward(self, input, target):
-        log_softmax_values = torch.log_softmax(input, dim=1)
+        
+        return F.cross_entropy(input, target, weight=self.class_weights)
 
-        # Calculate class weights
-        class_weights = torch.tensor([1.0 / count for count in torch.bincount(target)], device=input.device)
+class_counts = class_sample_count  # counts for classes
+print(class_counts)
+total_count = sum(class_counts)
+classes_weights = torch.tensor([total_count / c for c in class_counts], dtype=torch.float32)
+classes_weights /= classes_weights.min() #normalize the weights
+print(f'Normalised Class Weights, Need to play around with these:{classes_weights}')
 
-        # Weight the losses by class weights
-        weighted_losses = -target * log_softmax_values * class_weights[target]
-
-        return torch.mean(torch.sum(weighted_losses, dim=1))
-
-
-#loss_func = CustomCrossEntropyLoss()
-loss_func = nn.CrossEntropyLoss()
+loss_func = CustomCrossEntropyLoss()
+#loss_func = nn.CrossEntropyLoss()
 optimiser = optim.Adam(net.parameters(), lr = 0.001, weight_decay = 1e-6)
 
 # Function for training one epoch
@@ -398,3 +399,4 @@ class_report = classification_report(y_true, y_pred_flattened, target_names=['Sa
 
 # Print the classification report
 print("Classification Report:\n", class_report)
+
