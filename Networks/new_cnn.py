@@ -45,8 +45,8 @@ train_sampler = WeightedRandomSampler(weights=samples_weight, num_samples=len(sa
 # val_sampler = WeightedRandomSampler(weights=val_samples_weight, num_samples=len(val_samples_weight), replacement=True)
 
 # Data loaders with stratified sampling
-train_loader = DataLoader(train_dataset, batch_size=32,sampler=train_sampler)
-val_loader = DataLoader(val_dataset, batch_size=32)
+train_loader = DataLoader(train_dataset, batch_size=10,sampler=train_sampler)
+val_loader = DataLoader(val_dataset, batch_size=10)
 
 
 
@@ -130,53 +130,12 @@ if torch.cuda.is_available():
 
 # Create the model, loss function, and optimizer
 model = CNN()
-criterion = nn.CrossEntropyLoss()
-#criterion = WeightedCrossEntropyLoss(classes_weights)
+#criterion = nn.CrossEntropyLoss()
+criterion = WeightedCrossEntropyLoss(classes_weights)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-6)
 
 
 # %%
-
-# train_on_gpu = torch.cuda.is_available()
-
-# if not train_on_gpu:
-#     print('CUDA is not available.  Training on CPU ...')
-# else:
-#     print('CUDA is available!  Training on GPU ...')
-
-# if train_on_gpu:
-#     model.cuda()
-
-# n_epochs = 2
-# print_every = 50
-
-# for epoch in range(n_epochs):
-#     train_loss = 0.0
-#     correct = 0
-#     total = 0
-    
-#     for batch_idx, (images, labels) in enumerate(train_loader):
-#         if train_on_gpu:
-#             images, labels = images.cuda(), labels.cuda()  # Move data to GPU
-        
-#         optimizer.zero_grad()
-#         output = model(images)
-#         loss = criterion(output, labels)
-#         loss.backward()
-#         optimizer.step()
-        
-#         train_loss += loss.item() * images.size(0)
-#         _, predicted = torch.max(output, 1)
-#         total += labels.size(0)
-#         correct += (predicted == labels).sum().item()
-        
-#         if (batch_idx + 1) % print_every == 0:
-#             accuracy = 100 * correct / total
-#             print(f"Epoch {epoch+1}/{n_epochs}, Batch {batch_idx+1}/{len(train_loader)}, Training Loss: {train_loss / total}, Training Accuracy: {accuracy}%")
-    
-#     train_loss = train_loss / len(train_loader.dataset)
-#     accuracy = 100 * correct / total
-#     print(f"Epoch {epoch+1}/{n_epochs}, Training Loss: {train_loss}, Training Accuracy: {accuracy}%")
 
 import pandas as pd
 import torch
@@ -193,7 +152,7 @@ else:
 if train_on_gpu:
     model.cuda()
     
-n_epochs = 2
+n_epochs = 6
 print_every = 50
 metrics = []
 
@@ -236,6 +195,22 @@ for epoch in range(n_epochs):
                     test_total += test_labels.size(0)
                     test_correct += (test_predicted == test_labels).sum().item()
             test_accuracy = 100 * test_correct / test_total
+
+            # Also, optionally, evaluate validation accuracy
+            val_accuracy = None
+            val_correct = 0
+            val_total = 0
+
+            with torch.no_grad():
+                for val_images, val_labels in val_loader:
+                    if train_on_gpu:
+                        val_images, val_labels = val_images.cuda(), val_labels.cuda()
+                    val_outputs = model(val_images)
+                    _, val_predicted = torch.max(val_outputs, 1)
+                    val_total += val_labels.size(0)
+                    val_correct += (val_predicted == val_labels).sum().item()
+            val_accuracy = 100 * val_correct / val_total
+
             model.train()  # Set model back to train mode
 
         metrics.append({
@@ -243,7 +218,8 @@ for epoch in range(n_epochs):
             'batch': batch_idx + 1,
             'train_loss': batch_loss,
             'train_accuracy': batch_accuracy,
-            'test_accuracy': test_accuracy  # This will be None if not computed
+            'test_accuracy': test_accuracy,
+            'val_accuracy:': val_accuracy
         })
         
         if (batch_idx + 1) % print_every == 0:

@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 df = pd.read_csv('metrics.csv')
-zf = pd.read_csv('training_testing_metrics.csv')
+zf = pd.read_csv('metricsepoch2-4.csv')
 
 batches = zf['batch']
 batch_length = len(batches)
