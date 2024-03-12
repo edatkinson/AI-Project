@@ -23,7 +23,7 @@ import torch.nn.functional as F
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Navigate to the folder
-data_dir = 'C:/Users/arthu/Desktop/University/EngMaths/Third_year/Intro_to_AI/lll.v1i.multiclass/all'
+data_dir = 'C:/Users/qv20601.UOB/OneDrive - University of Bristol/all'
 
 # Define transforms
 transform = transforms.Compose([
@@ -353,6 +353,7 @@ plt.show()
 
 # Plotting the loss graph
 df = pd.DataFrame(metrics)
+df.to_csv('metrics_Custom_Loss.csv', index = False)
 # batch_length = df['batch'].apply(len)
 # test_acc = df['test_accuracy']
 
