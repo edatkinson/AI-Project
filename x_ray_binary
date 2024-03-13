@@ -29,7 +29,7 @@ data_dir = 'C:/Users/arthu/Desktop/University/EngMaths/Third_year/Intro_to_AI/ll
 transform = transforms.Compose([
     transforms.Resize((224,224)),
     transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    transforms.Normalize(mean=[0.7973, 0.7854, 0.7220], std=[0.2426, 0.1951, 0.2440])
 ])
 
 # Create dataset class
@@ -128,29 +128,36 @@ val_loader = DataLoader(val_ds,
 
 # Create CNN
 class CNN(nn.Module):
-  def __init__(self):
-    super().__init__()
-    # Creating layers
-    self.conv1 = nn.Conv2d(in_channels = 3, out_channels = 128, kernel_size = 3)
-    self.batch1 = nn.BatchNorm2d(128)
-    self.relu1 = nn.ReLU()
+    def __init__(self):
+        super(CNN, self).__init__()
+        # Convolutional layers
+        self.conv1 = nn.Conv2d(3, 16, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm2d(16)
+        self.pool1 = nn.MaxPool2d(2, 2)  # Adding pooling layer
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm2d(32)
+        self.pool2 = nn.MaxPool2d(2, 2)  # Adding pooling layer
+        self.conv3 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        self.bn3 = nn.BatchNorm2d(64)
+        self.pool3 = nn.MaxPool2d(2, 2)  # Adding pooling layer
+        
+        # After 3 rounds of halving the dimensions, the size calculation needs adjustment
+        # For an input of 224x224, after three poolings, the size is 224 / 2 / 2 / 2 = 28
+        self.fc1_size = 64 * 28 * 28  # Adjusted based on the pooling layers
+        self.fc1 = nn.Linear(self.fc1_size, 500)
+        self.fc2 = nn.Linear(500, 8)
+        self.dropout = nn.Dropout(0.25)
 
-    self.conv2 = nn.Conv2d(in_channels = 128, out_channels = 10, kernel_size = 3)
-    self.batch2 = nn.BatchNorm2d(10)
-    self.relu2 = nn.ReLU()
-    self.pool2 = nn.AdaptiveAvgPool2d(1)
-
-  def forward(self, x):
-    x = nn.functional.relu(self.conv1(x)) # apply non-linearity
-    x = self.batch1(x)
-    x = self.relu1(x)
-
-    x = nn.functional.relu(self.conv2(x)) # apply non-linearity
-    x = self.batch2(x)
-    x = self.relu2(x)
-    x = self.pool2(x)
-
-    return x
+    def forward(self, x):
+        x = self.pool1(F.relu(self.bn1(self.conv1(x))))  # Apply pooling
+        x = self.pool2(F.relu(self.bn2(self.conv2(x))))  # Apply pooling
+        x = self.pool3(F.relu(self.bn3(self.conv3(x))))  # Apply pooling
+        x = x.view(-1, self.fc1_size)  # Flatten the output for the fully connected layer
+        x = self.dropout(x)
+        x = F.relu(self.fc1(x))
+        x = self.dropout(x)
+        x = self.fc2(x)
+        return x
 
 # Instantiate Network
 net = CNN()
@@ -168,29 +175,32 @@ for i, data in enumerate(train_loader):
 # Specifying hyperparameters
 
 class CustomCrossEntropyLoss(nn.Module):
-    def __init__(self, class_weights):
+    def __init__(self):
         super(CustomCrossEntropyLoss, self).__init__()
-        self.class_weights = class_weights
 
     def forward(self, input, target):
-        
-        return F.cross_entropy(input, target, weight=self.class_weights)
+        log_softmax_values = torch.log_softmax(input, dim=1)
 
-class_counts = class_sample_count  # counts for classes
-print(class_counts)
-total_count = sum(class_counts)
-classes_weights = torch.tensor([total_count / c for c in class_counts], dtype=torch.float32)
-classes_weights /= classes_weights.min() #normalize the weights
-print(f'Normalised Class Weights, Need to play around with these:{classes_weights}')
+        # Calculate class weights
+        class_weights = torch.tensor([1.0 / count for count in torch.bincount(target)], device=input.device)
 
-loss_func = CustomCrossEntropyLoss()
-#loss_func = nn.CrossEntropyLoss()
+        # Weight the losses by class weights
+        weighted_losses = -target * log_softmax_values * class_weights[target]
+
+        return torch.mean(torch.sum(weighted_losses, dim=1))
+
+
+#loss_func = CustomCrossEntropyLoss()
+loss_func = nn.CrossEntropyLoss()
 optimiser = optim.Adam(net.parameters(), lr = 0.001, weight_decay = 1e-6)
 
 # Function for training one epoch
 
 train_accuracies = []
+train_losses = []
 metrics = []
+train_metrics = []
+print_every = 50
 
 def train_epoch():
   net.train(True) # set to training mode
@@ -214,56 +224,49 @@ def train_epoch():
     running_loss += loss.item() # update the loss
     loss.backward() # calculate gradients
     optimiser.step()
-
-    if batch_index % 50 == 49:      # print for every 500 batchs
-      avg_loss = running_loss/50  # get the average loss across batches
-      avg_acc = (running_accuracy/50) * 100 # get the average accuracy across batches
+    
+    train_acc = running_accuracy/(batch_index+1) * 100
+    train_loss = running_loss/(batch_index+1)
+    
+    if batch_index % 50 == 49:      # print for every 50 batchs
+      avg_loss = running_loss/(batch_index + 1)  # get the average loss across batches
+      avg_acc = (running_accuracy/(batch_index +1)) * 100 # get the average accuracy across batches
       print('Batch {0}, Loss: {1:.3f}, Accuracy: {2:.1f}%'.format(batch_index+1, avg_loss, avg_acc))
       train_accuracies.append(avg_acc)
+      train_losses.append(avg_loss)
       
-      running_loss = 0
-      running_accuracy = 0
-      
-    # evaluate test acc 
-    test_acc = None
-    #val_acc = None
-    #val_loss = None
-    print_every = 50
+    # evaluate val acc
+    val_acc = None
+    val_loss = None
     if (batch_index + 1) % print_every == 0:
         net.eval()
-        test_correct = 0
-        test_total = 0
+        val_correct = 0
+        val_total = 0
+        val_running_loss = 0
         with torch.no_grad():
-            for test_images, test_labels in test_loader:
-                test_images, test_labels = test_images.to(device), test_labels.to(device)
-                test_outputs = net(test_images)
-                _, test_predicted = torch.max(test_outputs, 1)
-                test_total += test_labels.size(0)
-                test_correct += (test_predicted == test_labels).sum().item()
-        test_acc = 100*test_correct/test_total
+            for val_images, val_labels in val_loader:
+                val_outputs = net(val_images).squeeze((-1, -2))
+                _, val_predicted = torch.max(val_outputs, 1)
+                val_total += val_labels.size(0)
+                val_correct += (val_predicted == val_labels).sum().item()
+                loss = loss_func(val_outputs, val_labels) # compare model predictions with labels
+                val_running_loss += loss.item() # update the loss
         
-        #evaluate val acc
-        # val_correct = 0
-        # val_total = 0
+        val_acc = 100*val_correct/val_total
+        val_loss = val_running_loss/50
         
-        # with torch.no_grad():
-        #     for val_images, val_labels in val_loader:
-        #         val_images, val_labels = val_images.to(device), val_labels.to(device)
-        #         val_outputs = net(val_images)
-        #         _, val_predicted = torch.max(val_outputs, 1)
-        #         val_total += val_labels.size(0)
-        #         val_correct += (val_predicted == val_labels).sum().item()
-        #         loss = loss_func(outputs, labels) # compare model predictions with labels
-        # val_acc = 100*val_correct/val_total
-        # val_loss = loss.item() # update the loss
-        
-        # net.train()
-        
+        net.train()
+    
     metrics.append({
-        'test_accuracy': test_acc,
-        'batch': batch_index + 1})
+        'Batch': batch_index + 1,
+        'val_accuracy': val_acc,
+        'val_loss': val_loss,
+        'train_accuracy': train_acc,
+        'train_loss': train_loss})
+        
     
   print()
+
 
 # Function for testing
 test_accuracies = []
@@ -324,7 +327,7 @@ def validate_epoch():
 
 # Training loop
 
-num_epochs = 1
+num_epochs = 6
 
 for i in range(num_epochs):
   print('Epoch:', i+1, '\n')
@@ -349,11 +352,11 @@ with torch.no_grad():
     y_true += labels.tolist()
     y_pred += predicted.tolist()
 
-y_pred_flattened = [item for sublist in y_pred for subsublist in sublist for item in subsublist]
+#y_pred_flattened = [item for sublist in y_pred for subsublist in sublist for item in subsublist]
 
-cm = confusion_matrix(y_true, y_pred_flattened)
+cm = confusion_matrix(y_true, y_pred)
 cm_df = pd.DataFrame(cm, index=classes, columns=classes)
-
+print(cm)
 plt.figure(figsize=(10, 8))
 sns.heatmap(cm_df, annot=True, cmap='Blues')
 plt.xlabel('Predicted')
@@ -362,17 +365,19 @@ plt.title('Confusion Matrix')
 plt.show()
 
 # Plotting the loss graph
-df = pd.DataFrame(metrics)
-batch_length = df['batch'].apply(len)
-test_acc = df['test_accuracy']
+df1 = pd.DataFrame(metrics)
+df1.to_csv('metrics_CrossEntropy_Loss.csv', index = False)
 
-plt.figure(2)
-plt.plot(range(batch_length), test_acc, label='Test Accuracy')
-plt.xlabel('Batch')
-plt.ylabel('Accuracy')
-plt.title('Testing Accuracy')
-plt.legend()
-plt.show()
+# batch_length = df['batch'].apply(len)
+# test_acc = df['test_accuracy']
+
+# plt.figure(2)
+# plt.plot(range(batch_length), test_acc, label='Test Accuracy')
+# plt.xlabel('Batch')
+# plt.ylabel('Accuracy')
+# plt.title('Testing Accuracy')
+# plt.legend()
+# plt.show()
 
 # Plotting accuracy and loss graphs
 # epochs = range(1, len(val_accuracies) + 1)
@@ -395,8 +400,10 @@ plt.show()
 # plt.show()
 
 # Generate a classification report using the predicted and actual labels
-class_report = classification_report(y_true, y_pred_flattened, target_names=['Safe', 'Prohibited'])
+class_report = classification_report(y_true, y_pred, target_names=['Safe', 'Prohibited'])
 
+# Print the classification report
+print("Classification Report:\n", class_report)
 # Print the classification report
 print("Classification Report:\n", class_report)
 
