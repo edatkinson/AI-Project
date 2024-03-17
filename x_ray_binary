@@ -18,6 +18,9 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report
 import torch.nn.functional as F
+import random
+import numpy as np
+import plotly.graph_objects as go
 
 # Check whether we have a GPU.  Use it if we do.
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -72,7 +75,7 @@ train_ds, val_ds = random_split(train_ds, [6887, 1477])
 # Define class labels
 classes = ('Safe', 'Prohibited')
 
-batch_size = 10
+batch_size = 50
 
 # Calculate the number of classes in train and val sets
 class_0_count_train = 0
@@ -114,14 +117,14 @@ val_sampler = WeightedRandomSampler(weights=val_samples_weight, num_samples=len(
 
 # Data loaders with stratified sampling
 train_loader = DataLoader(train_ds,
-                          batch_size=10,
+                          batch_size = batch_size,
                           sampler=train_sampler,
                           shuffle = False)  # don't shuffle with stratified sampling
 test_loader = DataLoader(test_ds,
                          batch_size = batch_size*5,
                          shuffle = False)
 val_loader = DataLoader(val_ds,
-                        batch_size=10*5,
+                        batch_size = batch_size*5,
                         sampler=val_sampler,
                         shuffle = False)
 
@@ -192,7 +195,7 @@ class CustomCrossEntropyLoss(nn.Module):
 
 #loss_func = CustomCrossEntropyLoss()
 loss_func = nn.CrossEntropyLoss()
-optimiser = optim.Adam(net.parameters(), lr = 0.001, weight_decay = 1e-6)
+optimiser = optim.SGD(net.parameters(), lr = 0.001, momentum = 0.99)
 
 # Function for training one epoch
 
@@ -200,7 +203,7 @@ train_accuracies = []
 train_losses = []
 metrics = []
 train_metrics = []
-print_every = 50
+print_every = 10
 
 def train_epoch():
   net.train(True) # set to training mode
@@ -228,7 +231,7 @@ def train_epoch():
     train_acc = running_accuracy/(batch_index+1) * 100
     train_loss = running_loss/(batch_index+1)
     
-    if batch_index % 50 == 49:      # print for every 50 batchs
+    if batch_index % 10 == 9:      # print for every 50 batchs
       avg_loss = running_loss/(batch_index + 1)  # get the average loss across batches
       avg_acc = (running_accuracy/(batch_index +1)) * 100 # get the average accuracy across batches
       print('Batch {0}, Loss: {1:.3f}, Accuracy: {2:.1f}%'.format(batch_index+1, avg_loss, avg_acc))
@@ -253,7 +256,7 @@ def train_epoch():
                 val_running_loss += loss.item() # update the loss
         
         val_acc = 100*val_correct/val_total
-        val_loss = val_running_loss/50
+        val_loss = val_running_loss/print_every
         
         net.train()
     
@@ -327,7 +330,7 @@ def validate_epoch():
 
 # Training loop
 
-num_epochs = 6
+num_epochs = 3
 
 for i in range(num_epochs):
   print('Epoch:', i+1, '\n')
@@ -404,6 +407,68 @@ class_report = classification_report(y_true, y_pred, target_names=['Safe', 'Proh
 
 # Print the classification report
 print("Classification Report:\n", class_report)
-# Print the classification report
-print("Classification Report:\n", class_report)
 
+# Plot an image with its class and predicted class
+def display_random_image_prediction(num_runs):
+    predicted_probs_list = []
+    
+    for i in range(num_runs):
+            
+        # Select a random image from the test dataset
+        image_index = random.randint(0, len(test_ds) - 1)
+        image, actual_label = test_ds[image_index]
+    
+        # Add batch dimension and move to device
+        image = image.unsqueeze(0).to(device)
+    
+        # Switch to evaluation mode
+        net.eval()
+        with torch.no_grad():
+            logits = net(image)
+            predicted_probs = F.softmax(logits, dim=1).squeeze().cpu().numpy()
+            predicted_probs_list.append(predicted_probs)
+    
+        # Get the predicted label
+        predicted_label = torch.argmax(logits, dim=1).item()
+    
+        # Convert the image tensor to numpy array and transpose dimensions
+        np_image = image.squeeze().cpu().numpy().transpose((1, 2, 0))
+    
+        # Display the image with its actual and predicted labels
+        plt.imshow(np_image)
+        plt.title(f"Actual: {classes[actual_label]} (Class {actual_label}), Predicted: {classes[predicted_label]} (Class {predicted_label})")
+        plt.axis('off')
+        plt.show()
+    
+    # Display the predicted probabilities for each class after all runs
+    mean_probs = np.mean(predicted_probs_list, axis=0)
+    sorted_data = sorted(zip(classes, mean_probs), key=lambda x: x[1], reverse=False)
+    
+    # Unzip the sorted data
+    classes_sorted, mean_probs_sorted = zip(*sorted_data)
+    
+    text_probs = [str('{0:.2f}'.format(100*val)) if val >= 0.01 else '' for val in mean_probs]
+    fig = go.Figure(go.Bar(
+        y=classes_sorted,
+        x=100*mean_probs,
+        orientation='h',
+        text=text_probs,  # Set the text attribute to display the values on the bars
+        textposition='auto'
+    ))
+    
+    # Update layout to display bars in descending order of values
+    fig.update_layout(title='Average Predicted Percentages for Each Class',
+                      yaxis=dict(autorange="reversed"),  # Reverse the y-axis to display bars from top to bottom
+                      xaxis_title='Mean Percentages',
+                      yaxis_title='Classes',
+                      width=600,  # Adjust the width of the graph
+                      height=400)
+    
+    # Show the plot
+    fig.show()
+    
+    print(classes[0], ':', 100*mean_probs[0], '%')
+    print(classes[1],':', 100*mean_probs[1],'%')
+
+# Call the function to display a random image with its labels
+display_random_image_prediction(1)
