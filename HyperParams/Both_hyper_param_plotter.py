@@ -20,7 +20,7 @@ import seaborn as sns
 
 
 df = pd.read_csv('/Users/maxchesters/Desktop/AI_Project/HyperParamTuning/Hyperparam_tuning_multi.csv')
-df = df.multiply
+
 df_sgd = df.iloc[:16]
 df_adam = df.iloc[16:32]
 df_rmsprop = df.iloc[32:48]
