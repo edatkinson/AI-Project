@@ -1,1 +1,2 @@
-Read me
+The most up to date Binary model is 'x_ray_binary' and the most up to date Multi-Class model is 'new_cnn.py' found in the networks folder. 
+All other files were either used for testing code, cleaning/transforming data, or plotting graphs to go in the report. 
